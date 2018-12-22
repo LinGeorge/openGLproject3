@@ -30,6 +30,7 @@ unsigned int rbo;
 unsigned int programFrame;
 glm::vec4 pixel;
 int facesid[FACE_SIZE];
+std::vector<int> facesid2;
 int facesptr = 0;
 //-------------------------------
 //framebuffer-shader ID
@@ -398,7 +399,7 @@ namespace OpenMesh_EX {
 
 			//glUseProgram(0); // GLSL1.1 要綁回0才畫得上去
 			//glEnable(GL_COLOR_MATERIAL);
-			glClearColor(1.0, 1.0, 1.0, 1.0);
+			glClearColor(0.0, 0.0, 0.0, 1.0);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			glPushMatrix();
 			point center;
@@ -520,6 +521,8 @@ namespace OpenMesh_EX {
 			//----------------------------
 			//畫出所選到的面(紅色)
 			//---------------------------
+			//glDeleteVertexArrays(1, &VAO);
+			//glDeleteBuffers(1, &VBO);
 			if (patch != NULL) {
 				//std::cout << "refresh mesh not null" << std::endl;
 				//mesh->Render_SolidWireframe();
@@ -527,12 +530,26 @@ namespace OpenMesh_EX {
 				glBindBuffer(GL_ARRAY_BUFFER, VBO);
 				std::cout << verticesPatch[0] << std::endl;
 				std::cout << verticesPatch.size() << std::endl;
-
+				
 				glBufferData(GL_ARRAY_BUFFER, verticesPatch.size() * sizeof(double), &verticesPatch[0], GL_STATIC_DRAW);
 				printf("change the VBO to patch...\n");
+
+				//debug1，把VAO重訂的部分拉上來
+				glEnableVertexAttribArray(0);
+				glVertexAttribPointer(0,				//location
+					3,				//vec3
+					GL_DOUBLE,			//type
+					GL_FALSE,			//not normalized
+					0,				//strip
+				0);//buffer offset
+
+
+				//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			}
+			
 			glEnable(GL_DEPTH_TEST);
-			glBindVertexArray(VAO);
+			glDepthFunc(GL_LEQUAL);
+			//glBindVertexArray(VAO);
 			glUseProgram(program);//uniform參數數值前必須先use shader
 			glBindBuffer(GL_UNIFORM_BUFFER, UBO);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(mat4), &ViewMatrix);
@@ -541,19 +558,14 @@ namespace OpenMesh_EX {
 			glUniformMatrix4fv(ModelID, 1, GL_FALSE, &Model[0][0]);
 			glUniformMatrix4fv(xfID, 1, GL_FALSE, &MVP[0][0]);
 			glBindBuffer(GL_ARRAY_BUFFER, VBO);
-			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(0,				//location
-				3,				//vec3
-				GL_DOUBLE,			//type
-				GL_FALSE,			//not normalized
-				0,				//strip
-				0);//buffer offset
-			if (facesptr != 0) {
+			
+			if (facesid2.size() != 0) {
 				printf("draw red patch...\n");
 				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 				glm::vec3 color = glm::vec3(1.0, 0.0, 0.0);
 				glUniform3fv(ColorID, 1, &color[0]);
 				glDrawArrays(GL_TRIANGLES, 0, facePatch * 3);
+				//glDrawArrays(GL_TRIANGLES, 0, facePatch * 3);
 				//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 				//color = glm::vec3(0.0, 0.0, 0.0);
 				//glUniform3fv(ColorID, 1, &color[0]);
@@ -585,21 +597,25 @@ namespace OpenMesh_EX {
 				printf("mouse x = %d mouse y = %d\n", e->X, SCR_HEIGHT - e->Y);
 			
 				// debug ： facesptr
-				//將所選到的面id加入陣列中並且排序
+				//將所選到的面id加入vector中並且排序
+				// debug : array 改用 vector，有幫我寫好的排序
 				if(isLoad){
 					
-					for (int i = 0; i < facesptr; i++) {
+					/*for (int i = 0; i < facesptr; i++) {
 						
-						if (facesid[i] == int(pixel.r)) {
+						if (facesid[i] == int(pixel.r) - 1) {
 							break;
 						}
-						else if (i == facesptr - 1) {
-							facesid[facesptr++] = int(pixel.r);
+						else if (pixel.r!= 0 && i == facesptr - 1) {
+							facesid[facesptr++] = int(pixel.r) - 1;
+							
+							printf("NEW facesid[facesptr] = %d\n", facesid[facesptr-1]);
 							break;
 						}
 					}
-					if(facesptr == 0) facesid[facesptr++] = int(pixel.r);
-
+					if (pixel.r != 0 && facesptr == 0) facesid[facesptr++] = int(pixel.r) - 1;
+					
+					//insertion sort
 					for (int k = 1; k < facesptr; k++) {
 						int temp = facesid[k]; // ex ; arr[9]
 						int j = k - 1; // j = 8
@@ -608,32 +624,53 @@ namespace OpenMesh_EX {
 							j -= 1;
 						}
 						facesid[j + 1] = temp;
+					}*/
+
+					// use vector to debug
+					for (int i = 0; i < facesid2.size(); i++) {
+
+						if (facesid2[i] == int(pixel.r) - 1) break;
+
+						else if (pixel.r != 0 && i == facesid2.size() - 1) {
+							facesid2.push_back(int(pixel.r) - 1);
+
+							printf("NEW facesid2[i] = %d\n", facesid2[i]);
+							break;
+						}
 					}
+					if (pixel.r != 0 && facesid2.size() == 0) facesid2.push_back(int(pixel.r) - 1);
+					std::sort(facesid2.begin(), facesid2.end());
 
-
-					printf("selected faces : ");
+					/*printf("selected faces : ");
 					for (int i = 0; i < facesptr; i++) {
 						printf("%d ", facesid[i]);
 						if (i == facesptr - 1) printf("\n");
 					}
-					printf("facesptr = %d\n", facesptr);
+					printf("facesptr = %d\n", facesptr);*/
+
+					printf("selected faces by vector: ");
+					for (int i = 0; i < facesid2.size(); i++) {
+						printf("%d ", facesid2[i]);
+						if (i == facesid2.size() - 1) printf("\n");
+					}
+					printf("facesptr by vector = %d\n", facesid2.size());
 				}
 
 				//----------------------------------
 				//將所選到的面load到vector中
 				//----------------------------------
-				if (facesptr != 0) {
+				if (facesid2.size() != 0) {
 					//del old mesh on screen
 					if (patch != NULL) delete patch;
 					patch = new Tri_Mesh;
 					//clear vertices and face to null
 					verticesPatch.clear();
-					verticesPatch.resize(0);
-					std::cout << "verticesPatch.resize(0)" << verticesPatch.size() << std::endl;
+					//verticesPatch.resize(0);
+					//std::cout << "verticesPatch.resize(0)" << verticesPatch.size() << std::endl;
 					facePatch = 0;
-					ReadFile(filename, patch); // change form here
-					patch->loadToBufferPatch(verticesPatch, facePatch, facesid, facesptr);
-
+					// ReadFile(filename, patch); // change form here
+					//patch->loadToBufferPatch(verticesPatch, facePatch, facesid, facesptr);
+					mesh->loadToBufferPatch(verticesPatch, facePatch, facesid2, *patch);
 
 					std::cout << "facePatch" << facePatch << std::endl;
 					std::cout << "verticesPatch.size()" << verticesPatch.size() << std::endl;

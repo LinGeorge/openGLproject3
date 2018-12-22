@@ -226,11 +226,16 @@ class Tri_Mesh:public OMT::Model
 public:
 	Tri_Mesh()
 	{
-	
-	
+		//OpenMesh::EPropHandleT<double> weight;
+		//add_property(weight);
+
+	}
+	~Tri_Mesh()
+	{
+
 	}
 	void loadToBuffer(std::vector<double> & out_vertices , int &face);
-	void loadToBufferPatch(std::vector<double> & out_vertices, int & face, int selected[], int facesptr);
+	void loadToBufferPatch(std::vector<double> & out_vertices, int & face, std::vector<int> selected, Tri_Mesh & patch);
 	//-------Edit Flag-------//
     bool                                       Delete_Flag;
 	

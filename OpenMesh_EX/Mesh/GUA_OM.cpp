@@ -563,43 +563,190 @@ void Tri_Mesh::loadToBuffer(std::vector<double> & out_vertices , int & face){
 	//glPopAttrib();
 }
 
-void Tri_Mesh::loadToBufferPatch(std::vector<double> & out_vertices, int & face, int selected[], int facesptr) {
+//typedef OpenMesh::PolyMesh_ArrayKernelT<>  MyMesh;
+void Tri_Mesh::loadToBufferPatch(std::vector<double> & out_vertices, int & face, std::vector<int> selected, Tri_Mesh & patch) {
 	//to buffer , then shader
 	FIter f_it;
-	FVIter	fv_it;
-
+	FVIter fv_it;
+	VIter v_it;
+	
 	face = 0;
-
+	
 	//glDisable(GL_LIGHTING);
 	//glPushAttrib(GL_LIGHTING_BIT);
 	//glEnable(GL_POLYGON_OFFSET_FILL);
 	//glEnable(GL_DEPTH_TEST);
 	//glPolygonOffset(6.0, 2.0);
 
+	//新的mesh的點和面
+	std::vector<Tri_Mesh::VertexHandle> vhandle;
+	std::vector<Tri_Mesh::VertexHandle>  face_vhandles;
+
+	int verticesSeq[3] = { 0,0,0 };
+	int verticesSeqPtr = 0;
+	int isPatchHasPoint = 0;
+	//
+	std::map<int, int> mapVerticesToVHandle;
 	for (f_it = faces_begin(); f_it != faces_end(); ++f_it) {
 
+
+		// 檢查這個face有沒有被我選到
 		int isFaceSelected = 0;
-		for (int i = 0; i < facesptr; i++) {
-			if (f_it.handle().idx() == selected[i]) {
+		for (int i = 0; i < selected.size(); i++) {
+			if (f_it.handle().idx() == selected[i]) { // 有的話就往下一步
 				isFaceSelected = 1;
 				break;
 			}
-			else if (f_it.handle().idx() != selected[i] && i == facesptr - 1) isFaceSelected = 0;
+			else if (f_it.handle().idx() != selected[i] && i == selected.size() - 1) isFaceSelected = 0; // 沒的話就直接套到下一個face
 		}
-		if (isFaceSelected == 0) continue;
+		if (isFaceSelected == 0) continue;// 沒的話就直接套到下一個face
 		face++;
 		for (fv_it = fv_iter(f_it); fv_it; ++fv_it) { // 每個面有三個點
 			// 每個點有三個vertexes
+			
 			out_vertices.push_back(*(point(fv_it.handle()).data()));
 			out_vertices.push_back(*(point(fv_it.handle()).data() + 1));
 			out_vertices.push_back(*(point(fv_it.handle()).data() + 2));
+			
+			//============================================
+			//not used
+			//============================================
+			/*int facepoint[3];
+			int facepointPtr = 0;
 
-			//std::cout << "push" << *(point(fv_it.handle()).data()) << "," << *(point(fv_it.handle()).data() + 1) << "," << *(point(fv_it.handle()).data()+2) << std::endl;
+			for (int i = out_vertices.size()-3; i < out_vertices.size(); i++) { // 每次檢查新加入的點有沒有和舊的點重複
+				int isSame = 0;
+				for (int j = 0; j < out_vertices.size() && !isSame; j++) { // 從0開始檢查
+					if (i == j) break;
+					else if (out_vertices.at(i) == out_vertices.at(j)) {
+						isSame = 1;
+						break;
+					}
+					else if (j == out_vertices.size() - 1) {
+						vhandle.push_back(patch.add_vertex(OMT::MyMesh::Point(out_vertices.at(i))));
+						
+					}
+				}
+			}*/
+			//============================================
+			//not used
+			//============================================
 
-			//glNormal3dv(normal(fv_it.handle()));
-			//glVertex3dv(point(fv_it.handle()).data());
+			//每加一個點，就檢查有沒有和patch vhandle的點重複，沒有的話就加入patch vhandle
+			isPatchHasPoint = 0;
+			int isSame = 0;
+			for (v_it = patch.vertices_begin(); v_it != patch.vertices_end(); v_it++) {
+				isPatchHasPoint = 1;
+				printf("v_iterator...\n");
+				if((out_vertices.at(out_vertices.size() - 3) == patch.point(v_it.handle())[0] && out_vertices.at(out_vertices.size() - 2) == patch.point(v_it.handle())[1] && out_vertices.at(out_vertices.size() - 1) == patch.point(v_it.handle())[2])){
+					verticesSeq[verticesSeqPtr++] = out_vertices.size() - 3;
+					mapVerticesToVHandle[out_vertices.size() - 3] = v_it.handle().idx();
+					isSame = 1;
+					printf("isSame...\n");
+					break;
+				}
+				
+			}
+			printf("isPatchHasPoint = %d\n", isPatchHasPoint);
+			if (isPatchHasPoint == 0) { // 如果是一開始patch沒有點的時候
+				printf("first point...\n");
+				vhandle.push_back(patch.add_vertex(Tri_Mesh::Point(out_vertices.at(0), out_vertices.at(1), out_vertices.at(2)))); // 第一個點是out_vertices的0,1,2==x,y,z
+				verticesSeq[verticesSeqPtr++] = out_vertices.size() - 3; // 紀錄是在out_vertices第幾個位置
+				mapVerticesToVHandle[out_vertices.size() - 3] = patch.vertices_begin().handle().idx(); // 將out_vertices位置轉換成新patch的點序號
+				printf("mapVToH = %d : %d\n", out_vertices.size() - 3, patch.vertices_begin().handle().idx());
+			}
+			if (isSame == 0 && isPatchHasPoint == 1) { // 如果是新的點
+				printf("new point...\n");
+				vhandle.push_back( patch.add_vertex( Tri_Mesh::Point( out_vertices.at(out_vertices.size() - 3), out_vertices.at(out_vertices.size() - 2), out_vertices.at(out_vertices.size() - 1) ) ) );
+				verticesSeq[verticesSeqPtr++] = out_vertices.size() - 3;
+				mapVerticesToVHandle[out_vertices.size() - 3] = (v_it).handle().idx();
+				printf("mapVToH = %d : %d\n", out_vertices.size() - 3, (v_it).handle().idx());
+			}
+			
+
 		}
+
+		//每跑完一個面的三個點之後，把面加進去
+		int num;
+		face_vhandles.clear();
+		num = mapVerticesToVHandle.find(verticesSeq[0])->second;
+		printf("num = %d\n", num);
+		face_vhandles.push_back(vhandle[num]);
+		num = mapVerticesToVHandle.find(verticesSeq[1])->second;
+		printf("num = %d\n", num);
+		face_vhandles.push_back(vhandle[num]);
+		num = mapVerticesToVHandle.find(verticesSeq[2])->second;
+		printf("num = %d\n", num);
+		face_vhandles.push_back(vhandle[num]);
+		/*vhandle[0] = patch.add_vertex(Tri_Mesh::Point(-1, -1, 1));
+		vhandle[1] = patch.add_vertex(Tri_Mesh::Point(1, -1, 1));
+		vhandle[2] = patch.add_vertex(Tri_Mesh::Point(1, 1, 1));
+		face_vhandles.push_back(vhandle[0]);
+		face_vhandles.push_back(vhandle[1]);
+		face_vhandles.push_back(vhandle[2]);*/
+		printf("after add three point to face_vhandles...\n");
+		patch.add_face(face_vhandles);
+		verticesSeqPtr = 0;
 	}
+
+	/*int verticesSeq[3] = {0,0,0};
+	int verticesSeqPtr = 0;
+	for (int i = 0; i < out_vertices.size(); i+=3) { // 檢查新加入的點有沒有和舊的點重複
+		int isSame = 0;
+		for (int j = 0; j < out_vertices.size() && !isSame; j+=3) { // 從0開始檢查
+			if (i == j) {
+				printf("i == j\n");
+				break;
+			}
+				//105,106,107
+			else if (j == out_vertices.size() - 4 && (out_vertices.at(i) != out_vertices.at(j) || out_vertices.at(i + 1) != out_vertices.at(j + 1) || out_vertices.at(i + 2) != out_vertices.at(j + 2))) {
+				
+				vhandle.push_back(patch.add_vertex(OMT::MyMesh::Point(out_vertices.at(i), out_vertices.at(i+1), out_vertices.at(i+2))));
+				verticesSeq[verticesSeqPtr++] = i;
+				printf("new point add in mesh...\n");
+				break;
+			}
+			else if (out_vertices.at(i) == out_vertices.at(j) && out_vertices.at(i+1) == out_vertices.at(j+1) && out_vertices.at(i+2) == out_vertices.at(j+2)) {
+				isSame = 1;
+				verticesSeq[verticesSeqPtr++] = i;
+				printf("same point add to seq...\n");
+				break;
+			}
+			
+		}
+
+		printf("none the point is added...\n");
+
+		if (verticesSeqPtr == 3) {
+			printf("add face to mesh...\n");
+			face_vhandles.clear();
+			face_vhandles.resize(0);
+			for (v_it = patch.vertices_begin(); v_it != patch.vertices_end(); v_it++) {
+				if (out_vertices.at(verticesSeq[0]) == patch.point(v_it.handle())[0] && out_vertices.at(verticesSeq[0] + 1) == patch.point(v_it.handle())[1] && out_vertices.at(verticesSeq[0] + 2) == patch.point(v_it.handle())[2]) {
+					// v_it裡面儲存的點要如何和vec3做比較
+					face_vhandles.push_back(vhandle[v_it.handle().idx()]);
+				}
+			}
+
+			for (v_it = patch.vertices_begin(); v_it != patch.vertices_end(); v_it++) {
+				if (out_vertices.at(verticesSeq[1]) == patch.point(v_it.handle())[0] && out_vertices.at(verticesSeq[1] + 1) == patch.point(v_it.handle())[1] && out_vertices.at(verticesSeq[1] + 2) == patch.point(v_it.handle())[2]) {
+					// v_it裡面儲存的點要如何和vec3做比較
+					face_vhandles.push_back(vhandle[v_it.handle().idx()]);
+				}
+			}
+			
+			for (v_it = patch.vertices_begin(); v_it != patch.vertices_end(); v_it++) {
+				if (out_vertices.at(verticesSeq[2]) == patch.point(v_it.handle())[0] && out_vertices.at(verticesSeq[2] + 1) == patch.point(v_it.handle())[1] && out_vertices.at(verticesSeq[2] + 2) == patch.point(v_it.handle())[2]) {
+					// v_it裡面儲存的點要如何和vec3做比較
+					face_vhandles.push_back(vhandle[v_it.handle().idx()]);
+				}
+			}
+			
+			patch.add_face(face_vhandles);
+			verticesSeqPtr = 0;
+		}
+
+	}*/
 	//glPopAttrib();
 }
 
