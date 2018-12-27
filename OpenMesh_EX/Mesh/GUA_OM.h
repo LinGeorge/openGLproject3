@@ -15,6 +15,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 using namespace glm;
 
+#include <Eigen/Sparse>
+using namespace Eigen;
+
 
 struct Face_InnerAngle
 {
@@ -236,6 +239,7 @@ public:
 	}
 	void loadToBuffer(std::vector<double> & out_vertices , int &face);
 	void loadToBufferPatch(std::vector<double> & out_vertices, int & face, std::vector<int> selected, Tri_Mesh & patch);
+	void getUV(std::vector<double> & patchuv, Tri_Mesh patch, float uvRotateAngle);
 	//-------Edit Flag-------//
     bool                                       Delete_Flag;
 	

@@ -304,6 +304,11 @@ bool _PLYReader_::read_ascii(std::istream& _in, BaseImporter& _bi, const Options
         return false;
     }
 
+    const bool err_enabled = omerr().is_enabled();
+    size_t complex_faces = 0;
+    if (err_enabled)
+      omerr().disable();
+
     // read vertices:
     for (i = 0; i < vertexCount_ && !_in.eof(); ++i) {
         vh = _bi.add_vertex();
@@ -432,6 +437,8 @@ bool _PLYReader_::read_ascii(std::istream& _in, BaseImporter& _bi, const Options
           }
 
           fh = _bi.add_face(vhandles);
+          if (!fh.is_valid())
+            ++complex_faces;
           break;
 
         case CUSTOM_PROP:
@@ -448,6 +455,12 @@ bool _PLYReader_::read_ascii(std::istream& _in, BaseImporter& _bi, const Options
       }
 
     }
+
+    if (err_enabled) 
+      omerr().enable();
+
+    if (complex_faces)
+      omerr() << complex_faces << "The reader encountered invalid faces, that could not be added.\n";
 
     // File was successfully parsed.
     return true;
@@ -471,6 +484,11 @@ bool _PLYReader_::read_binary(std::istream& _in, BaseImporter& _bi, bool /*_swap
     float                  tmp;
 
     _bi.reserve(vertexCount_, 3* vertexCount_ , faceCount_);
+
+    const bool err_enabled = omerr().is_enabled();
+    size_t complex_faces = 0;
+    if (err_enabled)
+      omerr().disable();
 
     // read vertices:
     for (unsigned int i = 0; i < vertexCount_ && !_in.eof(); ++i) {
@@ -588,7 +606,7 @@ bool _PLYReader_::read_binary(std::istream& _in, BaseImporter& _bi, bool /*_swap
         case VERTEX_INDICES:
           // nV = number of Vertices for current face
           unsigned int nV;
-          readValue(prop.listIndexType, _in, nV);
+          readInteger(prop.listIndexType, _in, nV);
 
           if (nV == 3) {
             vhandles.resize(3);
@@ -610,21 +628,30 @@ bool _PLYReader_::read_binary(std::istream& _in, BaseImporter& _bi, bool /*_swap
           }
 
           fh = _bi.add_face(vhandles);
+          if (!fh.is_valid())
+            ++complex_faces;
           break;
 
         case CUSTOM_PROP:
           if (_opt.check(Options::Custom) && fh.is_valid())
             readCustomProperty<true>(_in, _bi, fh, prop.name, prop.value, prop.listIndexType);
           else
-            consume_input(_in, scalar_size_[vertexProperties_[propertyIndex].value]);
+            consume_input(_in, scalar_size_[faceProperties_[propertyIndex].value]);
           break;
 
         default:
-          consume_input(_in, scalar_size_[vertexProperties_[propertyIndex].value]);
+          consume_input(_in, scalar_size_[faceProperties_[propertyIndex].value]);
           break;
         }
       }
     }
+
+    if (err_enabled) 
+      omerr().enable();
+
+   if (complex_faces)
+      omerr() << complex_faces << "The reader encountered invalid faces, that could not be added.\n";
+
 
     return true;
 }
@@ -1049,6 +1076,10 @@ bool _PLYReader_::can_u_read(std::istream& _is) const {
     std::getline(_is, line);
     trim(line);
 
+    // Handle '\r\n' newlines 
+    const int s = line.size(); 
+    if( s > 0 && line[s - 1] == '\r') line.resize(s - 1); 
+
     //Check if this file is really a ply format
     if (line != "PLY" && line != "ply")
         return false;
@@ -1127,6 +1158,8 @@ bool _PLYReader_::can_u_read(std::istream& _is) const {
                 indexType = ValueTypeUINT8;
               } else if (listIndexType == "uchar") {
                 indexType = ValueTypeUCHAR;
+              } else if (listIndexType == "int") {
+                indexType = ValueTypeINT;
               } else {
                 omerr() << "Unsupported Index type for property list: " << listIndexType << std::endl;
                 continue;

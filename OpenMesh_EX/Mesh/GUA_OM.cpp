@@ -467,6 +467,9 @@ namespace OMP
 	/*======================================================================*/
 };
 /*======================================================================*/
+
+const OpenMesh::VertexHandle Tri_Mesh::InvalidVertexHandle;
+
 void Tri_Mesh::Render_Solid(){
 		FIter f_it;
 		FVIter	fv_it;
@@ -585,7 +588,7 @@ void Tri_Mesh::loadToBufferPatch(std::vector<double> & out_vertices, int & face,
 	int verticesSeq[3] = { 0,0,0 };
 	int verticesSeqPtr = 0;
 	int isPatchHasPoint = 0;
-	//
+	
 	std::map<int, int> mapVerticesToVHandle;
 	for (f_it = faces_begin(); f_it != faces_end(); ++f_it) {
 
@@ -748,6 +751,273 @@ void Tri_Mesh::loadToBufferPatch(std::vector<double> & out_vertices, int & face,
 
 	}*/
 	//glPopAttrib();
+}
+
+void Tri_Mesh::getUV(std::vector<double> & patchuv, Tri_Mesh patch, float uvRotateAngle) {
+	VVIter vv_it;
+	VIter v_it;
+	EIter e_it;
+	HHandle heh;
+	FVIter fv_it;
+	FIter f_it;
+
+	//Step1 : 先找到第一個邊界
+	for (e_it = edges_begin(); e_it != edges_end(); e_it++) {
+		printf("enter edge iterator...\n");
+		
+		bool isBoundary = patch.is_boundary(*e_it);
+
+		if (isBoundary) {
+			//patch.point(v_it.handle())[0];
+			heh = patch.halfedge_handle(e_it.handle(), 1);
+			/*Point v1 = patch.point(from_vertex_handle(h));
+			Point v2 = patch.point(to_vertex_handle(h));
+			printf("v1 = %d, %f, %f\n",v1[0], v1[1], v1[2]);
+			printf("v2 = %f, %f, %f\n", v2.data(), v2.data() + 1, v2.data() + 2);*/
+			break;
+		}
+	}
+
+	// Step2 : 沿著該邊界找尋下一個邊
+	double perimeter = 0;
+	std::vector<double> segLength;
+	std::vector<Tri_Mesh::VertexHandle> vhs; // 儲存排序好的邊界點
+	HHandle hehNext = heh;
+	do {
+		Point from = patch.point(patch.from_vertex_handle(hehNext));
+		Point to = patch.point(patch.to_vertex_handle(hehNext));
+		perimeter += (from - to).length(); // v0 - v? 的長度
+		printf("perimeter = %f\n", perimeter);
+		segLength.push_back(perimeter); // 存入vector中，以便之後做texcoord
+		vhs.push_back(patch.from_vertex_handle(hehNext)); // 把邊界上的點一一存入
+		hehNext = patch.next_halfedge_handle(hehNext); // 可以直接依序往下一個heh走
+	} while (heh != hehNext);
+
+	//Step3 : 找完所有的邊界點和距離後，可以將邊界已知點換成texcoord
+	float rd = (225 + uvRotateAngle) * M_PI / 180.0;
+	float initDist = 0;
+	Tri_Mesh::TexCoord2D st(0, 0);
+	float R = std::sqrt(2) / 2.0; // 根號2/2
+	st[0] = R * cos(rd) + 0.5;
+	st[1] = R * sin(rd) + 0.5;
+
+	if (st[0] > 1)
+	{
+		st[0] = 1;
+		st[1] = tan(rd) / 2 + 0.5;
+	}
+
+	if (st[0] < 0)
+	{
+		st[0] = 0;
+		st[1] = 0.5 - tan(rd) / 2;
+	}
+
+	if (st[1] > 1)
+	{
+		st[0] = tan(M_PI_2 - rd) / 2 + 0.5;
+		st[1] = 1;
+	}
+
+	if (st[1] < 0)
+	{
+		st[0] = 0.5 - tan(M_PI_2 - rd) / 2;
+		st[1] = 0;
+	}
+
+
+	if (uvRotateAngle <= 90)
+	{
+		initDist = st.length();
+	}
+
+	else if (uvRotateAngle <= 180)
+	{
+		initDist = 1 + st[1];
+	}
+
+	else if (uvRotateAngle <= 270)
+	{
+		initDist = 3 - st[0];
+	}
+
+	else
+	{
+		initDist = 4 - st[1];
+	}
+
+
+	patch.request_vertex_texcoords2D();
+	patch.set_texcoord2D(vhs[0], st);
+	perimeter /= 4.0;
+	for (int i = 1; i < vhs.size(); ++i)
+	{
+		double curLen = segLength[i - 1] / perimeter + initDist; // 意即L0n/Ltotal*4
+		if (curLen > 4)
+		{
+			curLen -= 4;
+		}
+
+		if (curLen <= 1)
+		{
+			st[0] = curLen;
+			st[1] = 0;
+		}
+		else if (curLen <= 2)
+		{
+			st[0] = 1;
+			st[1] = curLen - 1;
+		}
+		else if (curLen <= 3)
+		{
+			st[0] = 3 - curLen;
+			st[1] = 1;
+		}
+		else
+		{
+			st[0] = 0;
+			st[1] = 4 - curLen;
+		}
+
+		patch.set_texcoord2D(vhs[i], st); // 先求出邊界點的uv座標，做為已知點
+	}
+
+
+	//Step4 : 接下來，算出非邊界的權重(使用均質公式)
+	OpenMesh::HPropHandleT<double> heWeight;
+	OpenMesh::VPropHandleT<int> row;
+	patch.add_property(heWeight, "heWeight"); //加入property：權重
+	patch.add_property(row, "row");
+
+	for (e_it = patch.edges_begin(); e_it != patch.edges_end(); ++e_it) {
+		bool isBound = patch.is_boundary(*e_it);
+		if (!isBound) { // 如果不是邊界，就要算他的權重，兩個half_edge都要
+			GLdouble angle1, angle2, w;
+			Tri_Mesh::HalfedgeHandle _heh = patch.halfedge_handle(e_it.handle(), 0);
+			Point pFrom = patch.point(patch.from_vertex_handle(_heh)); // 起點
+			Point pTo = patch.point(patch.to_vertex_handle(_heh)); // 終點
+			//問題：opposite_he_opposite_vh, opposite_vh抱錯
+			Point p1 = patch.point(patch.opposite_vh(_heh)); // 線上對點
+			Point p2 = patch.point(patch.opposite_he_opposite_vh(_heh)); // 線下對點
+			//auto _vh = patch.opposite_vh(_heh);
+			double edgeLen = (pFrom - pTo).length(); //線長度
+			OpenMesh::Vec3d v1 = (OpenMesh::Vec3d)(pTo - pFrom);
+			v1.normalize();
+			OpenMesh::Vec3d v2 = (OpenMesh::Vec3d)(p1 - pFrom);
+			v2.normalize();
+			angle1 = std::acos(OpenMesh::dot(v1, v2)); //線上點與線的arccos，取得角度
+
+			v2 = (OpenMesh::Vec3d)(p2 - pFrom);
+			v2.normalize();
+
+			angle2 = std::acos(OpenMesh::dot(v1, v2)); //線下點與線的arccos，取得角度
+
+			//均質公式
+			w = (std::tan(angle1 / 2.0f) + std::tan(angle2 / 2.0f)) / edgeLen;
+			patch.property(heWeight, _heh) = w;  //將其中一個edge算好丟入邊的性質中
+
+			// 再來計算反方向的halfedge weight
+			v1 = -v1;
+			v2 = (OpenMesh::Vec3d)(p1 - pTo);
+			v2.normalize();
+			angle1 = std::acos(OpenMesh::dot(v1, v2));//線上點與線的arccos，取得角度
+
+			v2 = (OpenMesh::Vec3d)(p2 - pTo);
+			v2.normalize();
+			angle2 = std::acos(OpenMesh::dot(v1, v2));//線下點與線的arccos，取得角度
+
+			w = (std::tan(angle1 / 2.0f) + std::tan(angle2 / 2.0f)) / edgeLen;
+			patch.property(heWeight, patch.opposite_halfedge_handle(_heh)) = w;//將反方向edge算好丟入邊的性質中
+		}
+
+	}
+
+	//Step5 : 找出矩陣的大小(NxN)，總點數-邊界點
+	int count = 0;
+	for (v_it = patch.vertices_begin(); v_it != patch.vertices_end(); v_it++) { // debug：patch.vertices_end()要加patch
+		if (patch.is_boundary(*v_it)) {
+			patch.property(row, *v_it) = -1;
+		}
+		else
+		{
+			patch.property(row, *v_it) = count++;
+		}
+	}
+
+	//Step6 : 填寫矩陣
+	typedef Eigen::SparseMatrix<double> SpMat;
+	SpMat A(count, count);
+	Eigen::VectorXd BX(count);
+	Eigen::VectorXd BY(count);//x 和 y 各解一次
+	Eigen::SimplicialLDLT<Eigen::SparseMatrix<double> > linearSolver;
+
+	BX.setZero();
+	BY.setZero();
+	// fiil matrix
+	for ( v_it = patch.vertices_begin(); v_it != patch.vertices_end(); ++v_it)
+	{
+		if (!patch.is_boundary(*v_it)) // 未知點是我們要解的東西
+		{
+			int i = patch.property(row, *v_it);
+			double totalWeight = 0;
+
+			for (vv_it = patch.vv_iter(*v_it); vv_it.is_valid(); ++vv_it)
+			{
+				HHandle _heh = patch.find_halfedge(*v_it, *vv_it);
+				double w = patch.property(heWeight, _heh);
+
+				if (patch.is_boundary(*vv_it)) //是邊界的為已知，填入B矩陣
+				{
+					TexCoord2D texCoord = patch.texcoord2D(*vv_it);
+					BX[i] += w * texCoord[0]; // 單行全相加
+					BY[i] += w * texCoord[1];
+				}
+				else // 不是邊界的為未知點，填入A矩陣
+				{
+					int j = patch.property(row, *vv_it);
+					A.insert(i, j) = -w;
+				}
+				totalWeight += w;
+			}
+
+
+			A.insert(i, i) = totalWeight; // 這裡的解法不用讓所有的w除上大W
+		}
+	}
+
+	A.makeCompressed();
+
+	//Step7 : 解開未知的uv座標們
+	SpMat At = A.transpose();
+	linearSolver.compute(At * A);
+
+	Eigen::VectorXd TX = linearSolver.solve(At * BX);
+	Eigen::VectorXd TY = linearSolver.solve(At * BY);
+
+	for ( v_it = patch.vertices_begin(); v_it != patch.vertices_end(); ++v_it)
+	{
+		if (!patch.is_boundary(*v_it))
+		{
+			int i = patch.property(row, *v_it);
+			patch.set_texcoord2D(*v_it, TexCoord2D(TX[i], TY[i]));
+		}
+	}
+	for (f_it = faces_begin(); f_it != faces_end(); ++f_it) {
+		for (fv_it = fv_iter(f_it); fv_it; ++fv_it)
+		{
+			patchuv.push_back(patch.texcoord2D(*fv_it)[0]);
+			patchuv.push_back(patch.texcoord2D(*fv_it)[1]);
+			//patchuv.push_back(*(point(fv_it.handle()).data()));
+			//patchuv.push_back(*(point(fv_it.handle()).data() + 1));
+
+		}
+	}
+	printf("patchuv : \n");
+	printf("patchuv.size() : %d\n", patchuv.size());
+	for (int i = 0; i < patchuv.size(); i+=2) {
+		printf("s = %f , t = %f\n", patchuv.at(i), patchuv.at(i+1));
+	}
+
 }
 
 void Tri_Mesh::Render_Wireframe(){

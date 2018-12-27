@@ -279,6 +279,128 @@ read_material(std::fstream& _in)
   }
   return true;
 }
+//-----------------------------------------------------------------------------
+
+bool
+_OBJReader_::
+read_vertices(std::istream& _in, BaseImporter& _bi, Options& _opt,
+              std::vector<Vec3f> & normals,
+              std::vector<Vec3f> & colors,
+              std::vector<Vec3f> & texcoords3d,
+              std::vector<Vec2f> & texcoords,
+              std::vector<VertexHandle> & vertexHandles,
+              Options & fileOptions)
+{
+    float x, y, z, u, v, w;
+    float r, g, b;
+
+    std::string line;
+    std::string keyWrd;
+
+    std::stringstream stream;
+
+
+    // Options supplied by the user
+    const Options & userOptions = _opt;
+
+    while( _in && !_in.eof() )
+    {
+        std::getline(_in,line);
+        if ( _in.bad() ){
+          omerr() << "  Warning! Could not read file properly!\n";
+          return false;
+        }
+
+        // Trim Both leading and trailing spaces
+        trimString(line);
+
+        // comment
+        if ( line.size() == 0 || line[0] == '#' || isspace(line[0]) ) {
+          continue;
+        }
+
+        stream.str(line);
+        stream.clear();
+
+        stream >> keyWrd;
+
+        // vertex
+        if (keyWrd == "v")
+        {
+          stream >> x; stream >> y; stream >> z;
+
+          if ( !stream.fail() )
+          {
+            vertexHandles.push_back(_bi.add_vertex(OpenMesh::Vec3f(x,y,z)));
+            stream >> r; stream >> g; stream >> b;
+
+            if ( !stream.fail() )
+            {
+              if (  userOptions.vertex_has_color() ) {
+                fileOptions += Options::VertexColor;
+                colors.push_back(OpenMesh::Vec3f(r,g,b));
+              }
+            }
+          }
+        }
+
+        // texture coord
+        else if (keyWrd == "vt")
+        {
+          stream >> u; stream >> v;
+
+          if ( !stream.fail()  ){
+
+            if ( userOptions.vertex_has_texcoord() || userOptions.face_has_texcoord() ) {
+              texcoords.push_back(OpenMesh::Vec2f(u, v));
+
+              // Can be used for both!
+              fileOptions += Options::VertexTexCoord;
+              fileOptions += Options::FaceTexCoord;
+
+              // try to read the w component as it is optional
+              stream >> w;
+              if ( !stream.fail()  )
+                  texcoords3d.push_back(OpenMesh::Vec3f(u, v, w));
+
+            }
+
+          }else{
+            omerr() << "Only single 2D or 3D texture coordinate per vertex"
+                  << "allowed!" << std::endl;
+            return false;
+          }
+        }
+
+        // color per vertex
+        else if (keyWrd == "vc")
+        {
+          stream >> r; stream >> g; stream >> b;
+
+          if ( !stream.fail()   ){
+            if ( userOptions.vertex_has_color() ) {
+              colors.push_back(OpenMesh::Vec3f(r,g,b));
+              fileOptions += Options::VertexColor;
+            }
+          }
+        }
+
+        // normal
+        else if (keyWrd == "vn")
+        {
+          stream >> x; stream >> y; stream >> z;
+
+          if ( !stream.fail() ) {
+            if (userOptions.vertex_has_normal() ){
+              normals.push_back(OpenMesh::Vec3f(x,y,z));
+              fileOptions += Options::VertexNormal;
+            }
+          }
+        }
+    }
+
+    return true;
+}
 
 //-----------------------------------------------------------------------------
 
@@ -286,18 +408,18 @@ bool
 _OBJReader_::
 read(std::istream& _in, BaseImporter& _bi, Options& _opt)
 {
-
   std::string line;
   std::string keyWrd;
 
-  float                     x, y, z, u, v;
-  float                     r, g, b;
-  BaseImporter::VHandles    vhandles;
   std::vector<Vec3f>        normals;
   std::vector<Vec3f>        colors;
+  std::vector<Vec3f>        texcoords3d;
   std::vector<Vec2f>        texcoords;
-  std::vector<Vec2f>        face_texcoords;
   std::vector<VertexHandle> vertexHandles;
+
+  BaseImporter::VHandles    vhandles;
+  std::vector<Vec3f>        face_texcoords3d;
+  std::vector<Vec2f>        face_texcoords;
 
   std::string               matname;
 
@@ -310,7 +432,22 @@ read(std::istream& _in, BaseImporter& _bi, Options& _opt)
   // Options collected via file parsing
   Options fileOptions;
 
+  // pass 1: read vertices
+  if ( !read_vertices(_in, _bi, _opt,
+                      normals, colors, texcoords3d, texcoords,
+                      vertexHandles, fileOptions) ){
+      return false;
+  }
 
+  // reset stream for second pass
+  _in.clear();
+  _in.seekg(0, std::ios::beg);
+
+  int nCurrentPositions = 0,
+      nCurrentTexcoords = 0,
+      nCurrentNormals   = 0;
+  
+  // pass 2: read faces
   while( _in && !_in.eof() )
   {
     std::getline(_in,line);
@@ -351,11 +488,11 @@ read(std::istream& _in, BaseImporter& _bi, Options& _opt)
       if ( matStream ){
 
         if ( !read_material( matStream ) )
-	        omerr() << "  Warning! Could not read file properly!\n";
+            omerr() << "  Warning! Could not read file properly!\n";
         matStream.close();
 
       }else
-	      omerr() << "  Warning! Material file '" << matFile << "' not found!\n";
+          omerr() << "  Warning! Material file '" << matFile << "' not found!\n";
 
       //omlog() << "  " << materials_.size() << " materials loaded.\n";
 
@@ -379,78 +516,23 @@ read(std::istream& _in, BaseImporter& _bi, Options& _opt)
         matname="";
       }
     }
-
-    // vertex
+    
+    // track current number of parsed vertex attributes,
+    // to allow for OBJs negative indices
     else if (keyWrd == "v")
     {
-      stream >> x; stream >> y; stream >> z;
-
-      if ( !stream.fail() )
-      {
-        vertexHandles.push_back(_bi.add_vertex(OpenMesh::Vec3f(x,y,z)));
-        stream >> r; stream >> g; stream >> b;
-
-        if ( !stream.fail() )
-        {
-          if (  userOptions.vertex_has_color() ) {
-            fileOptions += Options::VertexColor;
-            colors.push_back(OpenMesh::Vec3f(r,g,b));
-          }
-        }
-      }
+        ++nCurrentPositions;
     }
-
-    // texture coord
     else if (keyWrd == "vt")
     {
-      stream >> u; stream >> v;
-
-      if ( !stream.fail()  ){
-
-        if ( userOptions.vertex_has_texcoord() || userOptions.face_has_texcoord() ) {
-          texcoords.push_back(OpenMesh::Vec2f(u, v));
-
-          // Can be used for both!
-          fileOptions += Options::VertexTexCoord;
-          fileOptions += Options::FaceTexCoord;
-        }
-
-      }else{
-
-        omerr() << "Only single 2D texture coordinate per vertex"
-              << "allowed!" << std::endl;
-        return false;
-      }
+        ++nCurrentTexcoords;
     }
-
-    // color per vertex
-    else if (keyWrd == "vc")
-    {
-      stream >> r; stream >> g; stream >> b;
-
-      if ( !stream.fail()   ){
-        if ( userOptions.vertex_has_color() ) {
-          colors.push_back(OpenMesh::Vec3f(r,g,b));
-          fileOptions += Options::VertexColor;
-        }
-      }
-    }
-
-    // normal
     else if (keyWrd == "vn")
     {
-      stream >> x; stream >> y; stream >> z;
-
-      if ( !stream.fail() ) {
-        if (userOptions.vertex_has_normal() ){
-          normals.push_back(OpenMesh::Vec3f(x,y,z));
-          fileOptions += Options::VertexNormal;
-        }
-      }
+        ++nCurrentNormals;
     }
 
-
-    // face
+    // faces
     else if (keyWrd == "f")
     {
       int component(0), nV(0);
@@ -529,13 +611,19 @@ read(std::istream& _in, BaseImporter& _bi, Options& _opt)
                 // Calculation of index :
                 // -1 is the last vertex in the list
                 // As obj counts from 1 and not zero add +1
-                value = int(_bi.n_vertices() + value + 1);
+                value = nCurrentPositions + value + 1;
               }
               // Obj counts from 1 and not zero .. array counts from zero therefore -1
               vhandles.push_back(VertexHandle(value-1));
               faceVertices.push_back(VertexHandle(value-1));
-              if (fileOptions.vertex_has_color() )
-                _bi.set_color(vhandles.back(), colors[value-1]);
+              if (fileOptions.vertex_has_color()) {
+                if ((unsigned int)(value - 1) < colors.size()) {
+                  _bi.set_color(vhandles.back(), colors[value - 1]);
+                }
+                else {
+                  omerr() << "Error setting vertex color" << std::endl;
+                }
+              }                  
               break;
 	      
             case 1: // texture coord
@@ -543,7 +631,7 @@ read(std::istream& _in, BaseImporter& _bi, Options& _opt)
                 // Calculation of index :
                 // -1 is the last vertex in the list
                 // As obj counts from 1 and not zero add +1
-                value = int(texcoords.size()) + value + 1;
+                value = nCurrentTexcoords + value + 1;
               }
               assert(!vhandles.empty());
 
@@ -553,6 +641,8 @@ read(std::istream& _in, BaseImporter& _bi, Options& _opt)
                 if (!texcoords.empty() && (unsigned int) (value - 1) < texcoords.size()) {
                   // Obj counts from 1 and not zero .. array counts from zero therefore -1
                   _bi.set_texcoord(vhandles.back(), texcoords[value - 1]);
+                  if(!texcoords3d.empty() && (unsigned int) (value -1) < texcoords3d.size())
+                    _bi.set_texcoord(vhandles.back(), texcoords3d[value - 1]);
                 } else {
                   omerr() << "Error setting Texture coordinates" << std::endl;
                 }
@@ -563,6 +653,8 @@ read(std::istream& _in, BaseImporter& _bi, Options& _opt)
 
                   if (!texcoords.empty() && (unsigned int) (value - 1) < texcoords.size()) {
                     face_texcoords.push_back( texcoords[value-1] );
+                    if(!texcoords3d.empty() && (unsigned int) (value -1) < texcoords3d.size())
+                      face_texcoords3d.push_back( texcoords3d[value-1] );
                   } else {
                     omerr() << "Error setting Texture coordinates" << std::endl;
                   }
@@ -576,14 +668,18 @@ read(std::istream& _in, BaseImporter& _bi, Options& _opt)
                 // Calculation of index :
                 // -1 is the last vertex in the list
                 // As obj counts from 1 and not zero add +1
-                value = int(normals.size()) + value + 1;
+                value = nCurrentNormals + value + 1;
               }
 
               // Obj counts from 1 and not zero .. array counts from zero therefore -1
               if (fileOptions.vertex_has_normal() ) {
-                assert(!vhandles.empty());
-                assert((unsigned int)(value-1) < normals.size());
-                _bi.set_normal(vhandles.back(), normals[value-1]);
+                assert(!vhandles.empty());                
+                if ((unsigned int)(value - 1) < normals.size()) {
+                    _bi.set_normal(vhandles.back(), normals[value - 1]);
+                }
+                else {
+                    omerr() << "Error setting vertex normal" << std::endl;
+                }                
               }
               break;
           }
@@ -609,7 +705,10 @@ read(std::istream& _in, BaseImporter& _bi, Options& _opt)
         fh = _bi.add_face(faceVertices);
 
       if (!vhandles.empty() && fh.is_valid() )
+      {
         _bi.add_face_texcoords(fh, vhandles[0], face_texcoords);
+        _bi.add_face_texcoords(fh, vhandles[0], face_texcoords3d);
+      }
 
       if ( !matname.empty()  )
       {

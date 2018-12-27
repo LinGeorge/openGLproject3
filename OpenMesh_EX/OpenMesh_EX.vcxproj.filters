@@ -63,5 +63,11 @@
     <None Include="robotShader.vp">
       <Filter>shader</Filter>
     </None>
+    <None Include="uv.vp">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="uv.fp">
+      <Filter>shader</Filter>
+    </None>
   </ItemGroup>
 </Project>

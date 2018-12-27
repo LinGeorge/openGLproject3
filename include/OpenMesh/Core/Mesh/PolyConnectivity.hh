@@ -83,10 +83,10 @@ public:
   */
   //@{
   /// Linear iterator
-  typedef Iterators::GenericIteratorT<This, This::VertexHandle, ArrayKernel, &has_vertex_status, &n_vertices> VertexIter;
-  typedef Iterators::GenericIteratorT<This, This::HalfedgeHandle, ArrayKernel, &has_halfedge_status, &n_halfedges> HalfedgeIter;
-  typedef Iterators::GenericIteratorT<This, This::EdgeHandle, ArrayKernel, &has_edge_status, &n_edges> EdgeIter;
-  typedef Iterators::GenericIteratorT<This, This::FaceHandle, ArrayKernel, &has_face_status, &n_faces> FaceIter;
+  typedef Iterators::GenericIteratorT<This, This::VertexHandle, ArrayKernel , &ArrayKernel::has_vertex_status, &ArrayKernel::n_vertices> VertexIter;
+  typedef Iterators::GenericIteratorT<This, This::HalfedgeHandle, ArrayKernel , &ArrayKernel::has_halfedge_status, &ArrayKernel::n_halfedges> HalfedgeIter;
+  typedef Iterators::GenericIteratorT<This, This::EdgeHandle, ArrayKernel , &ArrayKernel::has_edge_status, &ArrayKernel::n_edges> EdgeIter;
+  typedef Iterators::GenericIteratorT<This, This::FaceHandle, ArrayKernel , &ArrayKernel::has_face_status, &ArrayKernel::n_faces> FaceIter;
 
   typedef VertexIter ConstVertexIter;
   typedef HalfedgeIter ConstHalfedgeIter;

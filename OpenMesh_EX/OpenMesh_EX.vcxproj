@@ -112,6 +112,8 @@
     <None Include="framebuffer.vp" />
     <None Include="robotShader.fp" />
     <None Include="robotShader.vp" />
+    <None Include="uv.fp" />
+    <None Include="uv.vp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

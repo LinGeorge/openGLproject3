@@ -57,6 +57,8 @@
 
 #include <OpenMesh/Tools/VDPM/VHierarchyWindow.hh>
 
+#include <cstring>
+
 #ifndef WIN32
 #else
   #if defined(__MINGW32__)
@@ -75,27 +77,17 @@ namespace VDPM {
 
 
 VHierarchyWindow::
-VHierarchyWindow()
+VHierarchyWindow() :
+  vhierarchy_(NULL), buffer_(NULL),buffer_min_ (0), buffer_max_(0), current_pos_(0) , window_min_(0), window_max_(0),  n_shift_(0)
 {
-  vhierarchy_  = NULL;
-  buffer_      = NULL;
 
-  buffer_min_  = 0;
-  buffer_max_  = 0;
-
-  window_min_  = 0;
-  window_max_  = 0;
-  current_pos_ = 0;
-
-  n_shift_     = 0;
 }
 
 
 VHierarchyWindow::
-VHierarchyWindow(VHierarchy &_vhierarchy)
+VHierarchyWindow(VHierarchy &_vhierarchy) :
+  vhierarchy_(&_vhierarchy),buffer_(NULL),buffer_min_ (0), buffer_max_(0), current_pos_(0) , window_min_(0), window_max_(0) ,n_shift_(0)
 {
-  vhierarchy_ = &_vhierarchy;
-  buffer_     = NULL;
 }
 
 
