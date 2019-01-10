@@ -226,20 +226,23 @@ namespace OMP//OpenMesh Polygonal mesh
 //==============
 class Tri_Mesh:public OMT::Model
 {
+
+
 public:
 	Tri_Mesh()
 	{
 		//OpenMesh::EPropHandleT<double> weight;
 		//add_property(weight);
-
+		request_vertex_texcoords2D();
 	}
 	~Tri_Mesh()
 	{
 
 	}
-	void loadToBuffer(std::vector<double> & out_vertices , int &face);
+	void loadToBuffer(Tri_Mesh _mesh, std::vector<double> & out_vertices , int &face, std::vector<double> & uv);
 	void loadToBufferPatch(std::vector<double> & out_vertices, int & face, std::vector<int> selected, Tri_Mesh & patch);
-	void getUV(std::vector<double> & patchuv, Tri_Mesh patch, float uvRotateAngle);
+	void findNearestPoint(Tri_Mesh mesh, std::vector<double> mouse, int face, std::vector<double> &vertex);
+	void getUV(std::vector<double> & patchuv, Tri_Mesh &patch, float uvRotateAngle);
 	//-------Edit Flag-------//
     bool                                       Delete_Flag;
 	

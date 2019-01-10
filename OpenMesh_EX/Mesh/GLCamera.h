@@ -48,6 +48,7 @@ private:
 
 public:
 	bool read_depth(int x, int y, point &p) const;
+	bool read_mouse(int x, int y, point &p, xform xf) const;
 	GLCamera() : lastb(Mouse::NONE), lightdir(vec(0,0,1)),
 		     dospin(false), spinspeed(0), field_of_view(0.7f),
 		     surface_depth(0.0f), click_depth(0.0f)

@@ -536,7 +536,7 @@ void Tri_Mesh::Render_SolidWireframe()
 	glPopAttrib();
 }
 
-void Tri_Mesh::loadToBuffer(std::vector<double> & out_vertices , int & face){
+void Tri_Mesh::loadToBuffer(Tri_Mesh _mesh, std::vector<double> & out_vertices , int & face, std::vector<double> & uv){
 	//to buffer , then shader
 	FIter f_it;
 	FVIter	fv_it;
@@ -548,6 +548,12 @@ void Tri_Mesh::loadToBuffer(std::vector<double> & out_vertices , int & face){
 	//glEnable(GL_POLYGON_OFFSET_FILL);
 	//glEnable(GL_DEPTH_TEST);
 	//glPolygonOffset(6.0, 2.0);
+	std::cout << "mesh support : " << std::endl;
+	std::cout << "  " << "texcoords" << ": " << ((_mesh.has_vertex_texcoords1D()) ? "yes\n" : "no\n") << std::endl;
+	std::cout << "  " << "texcoords" << ": " << ((_mesh.has_vertex_texcoords2D()) ? "yes\n" : "no\n") << std::endl;
+	std::cout << "  " << "texcoords" << ": " << ((_mesh.has_vertex_texcoords3D()) ? "yes\n" : "no\n") << std::endl;
+	std::cout << "  " << "normal" << ": " << ((_mesh.has_vertex_normals()) ? "yes\n" : "no\n") << std::endl;
+	
 
 	for (f_it = faces_begin(); f_it != faces_end(); ++f_it) {
 		face++;
@@ -556,7 +562,11 @@ void Tri_Mesh::loadToBuffer(std::vector<double> & out_vertices , int & face){
 			out_vertices.push_back(*(point(fv_it.handle()).data()));
 			out_vertices.push_back(*(point(fv_it.handle()).data()+1));
 			out_vertices.push_back(*(point(fv_it.handle()).data()+2));
-
+			//std::cout << "x = " << *(point(fv_it.handle()).data()) << " y = " << *(point(fv_it.handle()).data() + 1) << " z = " << *(point(fv_it.handle()).data() + 2) << std::endl;
+			uv.push_back(_mesh.texcoord2D(fv_it.handle())[0]);
+			uv.push_back(_mesh.texcoord2D(fv_it.handle())[1]);
+			
+			//std::cout << "s = " << _mesh.texcoord2D(fv_it.handle())[0] << " t = " << _mesh.texcoord2D(fv_it.handle())[0] << std::endl;
 			//std::cout << "push" << *(point(fv_it.handle()).data()) << "," << *(point(fv_it.handle()).data() + 1) << "," << *(point(fv_it.handle()).data()+2) << std::endl;
 
 			//glNormal3dv(normal(fv_it.handle()));
@@ -640,7 +650,7 @@ void Tri_Mesh::loadToBufferPatch(std::vector<double> & out_vertices, int & face,
 			int isSame = 0;
 			for (v_it = patch.vertices_begin(); v_it != patch.vertices_end(); v_it++) {
 				isPatchHasPoint = 1;
-				printf("v_iterator...\n");
+				//printf("v_iterator...\n");
 				if((out_vertices.at(out_vertices.size() - 3) == patch.point(v_it.handle())[0] && out_vertices.at(out_vertices.size() - 2) == patch.point(v_it.handle())[1] && out_vertices.at(out_vertices.size() - 1) == patch.point(v_it.handle())[2])){
 					verticesSeq[verticesSeqPtr++] = out_vertices.size() - 3;
 					mapVerticesToVHandle[out_vertices.size() - 3] = v_it.handle().idx();
@@ -753,7 +763,48 @@ void Tri_Mesh::loadToBufferPatch(std::vector<double> & out_vertices, int & face,
 	//glPopAttrib();
 }
 
-void Tri_Mesh::getUV(std::vector<double> & patchuv, Tri_Mesh patch, float uvRotateAngle) {
+void Tri_Mesh::findNearestPoint(Tri_Mesh mesh, std::vector<double> mouse, int face, std::vector<double> &vertex) {
+	FIter f_it;
+	FVIter fv_it;
+	
+	VHandle min;
+
+	int isFaceMatch = 0;
+	for (f_it = faces_begin(); f_it != faces_end() && !isFaceMatch; ++f_it) {
+
+		//printf("out for\n");
+
+
+		if (f_it.handle().idx() != face) continue;
+
+		else min = fv_iter(f_it).handle();
+
+		for (fv_it = ++fv_iter(f_it); fv_it; ++fv_it) { // 每個面有三個點
+			//printf("in for\n");
+			double temp = std::sqrtl(std::pow( (point(min)[0] - mouse[0]), 2) + std::pow((point(min)[1] - mouse[1]), 2) + std::pow((point(min)[2] - mouse[2]), 2));
+			double current = std::sqrtl(std::pow((point(fv_it.handle())[0] - mouse[0]), 2) + std::pow((point(fv_it.handle())[1] - mouse[1]), 2) + std::pow((point(fv_it.handle())[2] - mouse[2]), 2));
+
+			printf(" temp %f  v.s. current %f\n", temp, current);
+
+			if (temp > current) min = fv_it.handle();
+
+
+			isFaceMatch = 1;
+		}
+
+
+	}
+
+	//printf("here?\n");
+
+	for (int i = 0; i < 3 && isFaceMatch; i++) {
+		vertex.push_back(point(min)[i]);
+	}
+	if(isFaceMatch) printf("selected point is : %f %f %f\n", vertex[0], vertex[1], vertex[2]);
+	
+}
+
+void Tri_Mesh::getUV(std::vector<double> & patchuv, Tri_Mesh &patch, float uvRotateAngle) {
 	VVIter vv_it;
 	VIter v_it;
 	EIter e_it;
@@ -763,7 +814,7 @@ void Tri_Mesh::getUV(std::vector<double> & patchuv, Tri_Mesh patch, float uvRota
 
 	//Step1 : 先找到第一個邊界
 	for (e_it = edges_begin(); e_it != edges_end(); e_it++) {
-		printf("enter edge iterator...\n");
+		//printf("enter edge iterator...\n");
 		
 		bool isBoundary = patch.is_boundary(*e_it);
 
@@ -787,7 +838,7 @@ void Tri_Mesh::getUV(std::vector<double> & patchuv, Tri_Mesh patch, float uvRota
 		Point from = patch.point(patch.from_vertex_handle(hehNext));
 		Point to = patch.point(patch.to_vertex_handle(hehNext));
 		perimeter += (from - to).length(); // v0 - v? 的長度
-		printf("perimeter = %f\n", perimeter);
+		//printf("perimeter = %f\n", perimeter);
 		segLength.push_back(perimeter); // 存入vector中，以便之後做texcoord
 		vhs.push_back(patch.from_vertex_handle(hehNext)); // 把邊界上的點一一存入
 		hehNext = patch.next_halfedge_handle(hehNext); // 可以直接依序往下一個heh走
@@ -889,6 +940,7 @@ void Tri_Mesh::getUV(std::vector<double> & patchuv, Tri_Mesh patch, float uvRota
 	patch.add_property(heWeight, "heWeight"); //加入property：權重
 	patch.add_property(row, "row");
 
+	printf("calculate weight...\n");
 	for (e_it = patch.edges_begin(); e_it != patch.edges_end(); ++e_it) {
 		bool isBound = patch.is_boundary(*e_it);
 		if (!isBound) { // 如果不是邊界，就要算他的權重，兩個half_edge都要
@@ -945,6 +997,7 @@ void Tri_Mesh::getUV(std::vector<double> & patchuv, Tri_Mesh patch, float uvRota
 	}
 
 	//Step6 : 填寫矩陣
+	printf("set the matrix...\n");
 	typedef Eigen::SparseMatrix<double> SpMat;
 	SpMat A(count, count);
 	Eigen::VectorXd BX(count);
@@ -988,12 +1041,14 @@ void Tri_Mesh::getUV(std::vector<double> & patchuv, Tri_Mesh patch, float uvRota
 	A.makeCompressed();
 
 	//Step7 : 解開未知的uv座標們
+	printf("solved the linear system...\n");
 	SpMat At = A.transpose();
 	linearSolver.compute(At * A);
 
 	Eigen::VectorXd TX = linearSolver.solve(At * BX);
 	Eigen::VectorXd TY = linearSolver.solve(At * BY);
 
+	printf("put texcoord to patch...\n");
 	for ( v_it = patch.vertices_begin(); v_it != patch.vertices_end(); ++v_it)
 	{
 		if (!patch.is_boundary(*v_it))
@@ -1012,11 +1067,12 @@ void Tri_Mesh::getUV(std::vector<double> & patchuv, Tri_Mesh patch, float uvRota
 
 		}
 	}
-	printf("patchuv : \n");
+	printf("done\n");
+	/*printf("patchuv : \n");
 	printf("patchuv.size() : %d\n", patchuv.size());
 	for (int i = 0; i < patchuv.size(); i+=2) {
 		printf("s = %f , t = %f\n", patchuv.at(i), patchuv.at(i+1));
-	}
+	}*/
 
 }
 
@@ -1057,7 +1113,9 @@ void Tri_Mesh::Render_Point()
 bool ReadFile(std::string _fileName,Tri_Mesh *_mesh)
 {
 	bool isRead = false;
-	OpenMesh::IO::Options opt;
+	OpenMesh::IO::Options opt; 
+	opt += OpenMesh::IO::Options::VertexTexCoord;
+	//opt += OpenMesh::IO::Options::VertexNormal;
 	if ( OpenMesh::IO::read_mesh(*_mesh, _fileName, opt) )
 	{
 		//read mesh from filename OK!
@@ -1071,13 +1129,24 @@ bool ReadFile(std::string _fileName,Tri_Mesh *_mesh)
 			_mesh->update_normals();
 		}
 	}
+
+	printf("opt.check( OpenMesh::IO::Options::VertexNormal ) = %d\n", opt.check(OpenMesh::IO::Options::VertexNormal));
+	printf("_mesh->has_vertex_normals() = %d\n", _mesh->has_vertex_normals());
+
+
+	printf("opt.check( OpenMesh::IO::Options::VertexTexCoord ) = %d\n", opt.check(OpenMesh::IO::Options::VertexTexCoord));
+	printf("_mesh->has_vertex_texcoord2D() = %d\n", _mesh->has_vertex_texcoords2D());
+
+
 	return isRead;
 }
 
 bool SaveFile(std::string _fileName, Tri_Mesh *_mesh)
 {
 	bool isSave = false;
-	if (OpenMesh::IO::write_mesh(*_mesh, _fileName))
+	OpenMesh::IO::Options opt = OpenMesh::IO::Options::VertexTexCoord;
+	opt += OpenMesh::IO::Options::VertexNormal;
+	if (OpenMesh::IO::write_mesh(*_mesh, _fileName, opt))
 	{
 		isSave = true;
 	}

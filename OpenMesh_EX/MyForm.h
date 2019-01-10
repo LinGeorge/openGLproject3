@@ -69,10 +69,12 @@ Tri_Mesh *mesh;
 Tri_Mesh *patch; // 所選的片
 
 bool isLoad = false;
+bool wholeModel = false;
 std::vector<double> vertices;
 std::vector<double> meshUV;
 std::vector<double> verticesPatch; // patch的點，給vbo用
 std::vector<double> patchUV; // patch的uv座標，給vbo用
+std::vector<double> selectedVertices;
 
 unsigned int checkerBoardImg; // 貼圖
 
@@ -106,10 +108,16 @@ mat4 ViewMatrixUV;
 //---------------------------------------------
 
 GLuint VBO;
+GLuint meshVBO;
 GLuint VAO;
 GLuint UBO;
+
 GLuint VBOuv;
 GLuint VAOuv;
+
+//GLuint VBOpoint;
+//GLuint VAOpoint;
+
 int face;
 int facePatch;
 
@@ -263,6 +271,7 @@ namespace OpenMesh_EX {
 	private: HKOGLPanel::HKOGLPanelControl^  hkoglPanelControl2;
 	private: System::Windows::Forms::Button^  button1;
 	private: System::Windows::Forms::Button^  button2;
+	private: System::Windows::Forms::ToolStripMenuItem^  changePictureToolStripMenuItem;
 
 
 	private: System::ComponentModel::IContainer^  components;
@@ -298,6 +307,7 @@ namespace OpenMesh_EX {
 				this->hkoglPanelControl2 = (gcnew HKOGLPanel::HKOGLPanelControl());
 				this->button1 = (gcnew System::Windows::Forms::Button());
 				this->button2 = (gcnew System::Windows::Forms::Button());
+				this->changePictureToolStripMenuItem = (gcnew System::Windows::Forms::ToolStripMenuItem());
 				this->menuStrip1->SuspendLayout();
 				this->tableLayoutPanel1->SuspendLayout();
 				this->SuspendLayout();
@@ -305,11 +315,14 @@ namespace OpenMesh_EX {
 				// menuStrip1
 				// 
 				this->menuStrip1->ImageScalingSize = System::Drawing::Size(20, 20);
-				this->menuStrip1->Items->AddRange(gcnew cli::array< System::Windows::Forms::ToolStripItem^  >(1) { this->fileToolStripMenuItem });
+				this->menuStrip1->Items->AddRange(gcnew cli::array< System::Windows::Forms::ToolStripItem^  >(2) {
+					this->fileToolStripMenuItem,
+						this->changePictureToolStripMenuItem
+				});
 				this->menuStrip1->Location = System::Drawing::Point(0, 0);
 				this->menuStrip1->Name = L"menuStrip1";
 				this->menuStrip1->Padding = System::Windows::Forms::Padding(8, 2, 0, 2);
-				this->menuStrip1->Size = System::Drawing::Size(1286, 27);
+				this->menuStrip1->Size = System::Drawing::Size(1286, 28);
 				this->menuStrip1->TabIndex = 1;
 				this->menuStrip1->Text = L"menuStrip1";
 				// 
@@ -320,20 +333,20 @@ namespace OpenMesh_EX {
 						this->saveModelToolStripMenuItem
 				});
 				this->fileToolStripMenuItem->Name = L"fileToolStripMenuItem";
-				this->fileToolStripMenuItem->Size = System::Drawing::Size(45, 23);
+				this->fileToolStripMenuItem->Size = System::Drawing::Size(45, 24);
 				this->fileToolStripMenuItem->Text = L"File";
 				// 
 				// loadModelToolStripMenuItem
 				// 
 				this->loadModelToolStripMenuItem->Name = L"loadModelToolStripMenuItem";
-				this->loadModelToolStripMenuItem->Size = System::Drawing::Size(168, 26);
+				this->loadModelToolStripMenuItem->Size = System::Drawing::Size(216, 26);
 				this->loadModelToolStripMenuItem->Text = L"Load Model";
 				this->loadModelToolStripMenuItem->Click += gcnew System::EventHandler(this, &MyForm::loadModelToolStripMenuItem_Click);
 				// 
 				// saveModelToolStripMenuItem
 				// 
 				this->saveModelToolStripMenuItem->Name = L"saveModelToolStripMenuItem";
-				this->saveModelToolStripMenuItem->Size = System::Drawing::Size(168, 26);
+				this->saveModelToolStripMenuItem->Size = System::Drawing::Size(216, 26);
 				this->saveModelToolStripMenuItem->Text = L"Save Model";
 				this->saveModelToolStripMenuItem->Click += gcnew System::EventHandler(this, &MyForm::saveModelToolStripMenuItem_Click);
 				// 
@@ -420,6 +433,7 @@ namespace OpenMesh_EX {
 				this->button1->TabIndex = 4;
 				this->button1->Text = L"loadPatch";
 				this->button1->UseVisualStyleBackColor = true;
+				this->button1->Click += gcnew System::EventHandler(this, &MyForm::button1_Click);
 				// 
 				// button2
 				// 
@@ -429,6 +443,13 @@ namespace OpenMesh_EX {
 				this->button2->TabIndex = 5;
 				this->button2->Text = L"loadTxt";
 				this->button2->UseVisualStyleBackColor = true;
+				// 
+				// changePictureToolStripMenuItem
+				// 
+				this->changePictureToolStripMenuItem->Name = L"changePictureToolStripMenuItem";
+				this->changePictureToolStripMenuItem->Size = System::Drawing::Size(123, 24);
+				this->changePictureToolStripMenuItem->Text = L"ChangePicture";
+				this->changePictureToolStripMenuItem->Click += gcnew System::EventHandler(this, &MyForm::changePictureToolStripMenuItem_Click);
 				// 
 				// MyForm
 				// 
@@ -511,7 +532,7 @@ namespace OpenMesh_EX {
 			//checkerBoardImg = loadTexture("castle.png");
 			//glUniform1i(glGetUniformLocation(program, "sprite"), 0);
 
-			const std::string ProjectName = "heightmap.jpg";
+			const std::string ProjectName = "castle.png";
 			TextureData tdata = Load_png((ProjectName).c_str(), true);
 
 			//Generate empty texture
@@ -600,6 +621,9 @@ namespace OpenMesh_EX {
 				facesid[i] = -1;
 			}
 			facesptr = 0;*/
+
+			
+
 		}
 		//display
 		private: System::Void hkoglPanelControl1_Paint(System::Object^  sender, System::Windows::Forms::PaintEventArgs^  e){
@@ -637,6 +661,10 @@ namespace OpenMesh_EX {
 				std::cout << vertices[0] << std::endl;
 				std::cout << vertices.size() << std::endl;
 				glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(double), &vertices[0], GL_STATIC_DRAW);
+				
+				glGenBuffers(1, &meshVBO);
+				glBindBuffer(GL_ARRAY_BUFFER, meshVBO);
+				glBufferData(GL_ARRAY_BUFFER, meshUV.size() * sizeof(double), &meshUV[0], GL_STATIC_DRAW);
 				//glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(double) + meshUV.size() * sizeof(double), &vertices[0], GL_STATIC_DRAW);
 				//glBufferSubData(GL_ARRAY_BUFFER, vertices.size() * sizeof(double), meshUV.size() * sizeof(double), &meshUV[0]);
 			}
@@ -679,17 +707,23 @@ namespace OpenMesh_EX {
 				3,				//vec3
 				GL_DOUBLE,			//type
 				GL_FALSE,			//not normalized
-				3 * sizeof(double),				//strip
+				0,				//strip
 				0);//buffer offset
 			/*glEnableVertexAttribArray(1);
 			glVertexAttribPointer(1,				//location
 				2,				//vec3
 				GL_DOUBLE,			//type
 				GL_FALSE,			//not normalized
-				2 * sizeof(double),				//strip
-				(void*)(vertices.size() * sizeof(double)));//buffer offset*/
+				0,				//strip
+				(void*)(vertices.size() * sizeof(double)) );//buffer offset*/
+			glBindBuffer(GL_ARRAY_BUFFER, meshVBO); // this attribute comes from a different vertex buffer
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(1, 2, GL_DOUBLE, GL_FALSE, 0, (void*)0); // 從instanceVBO傳入的
+			glBindBuffer(GL_ARRAY_BUFFER, 0);
+
 			if (isLoad) {
 				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+				//glm::vec3 color = glm::vec3(-1.0, 0.0, 0.0);
 				glm::vec3 color = glm::vec3(-1.0, 0.0, 0.0);
 				glUniform3fv(ColorID, 1, &color[0]);
 				glActiveTexture(GL_TEXTURE0);
@@ -731,7 +765,7 @@ namespace OpenMesh_EX {
 			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 			if (isLoad) {
 				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-				glm::vec3 color = glm::vec3(1.0, 0.85, 0.0);
+				glm::vec3 color = glm::vec3(1.0, 0.85, 0.5);
 				glUniform3fv(ColorID, 1, &color[0]);
 				glDrawArrays(GL_TRIANGLES, 0, face * 3);
 				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -745,70 +779,177 @@ namespace OpenMesh_EX {
 			//---------------------------
 			//glDeleteVertexArrays(1, &VAO);
 			//glDeleteBuffers(1, &VBO);
-			if (patch != NULL) {
-				//std::cout << "refresh mesh not null" << std::endl;
-				//mesh->Render_SolidWireframe();
-				glGenBuffers(1, &VBO);
+			if (!wholeModel) { // 直接選片段的
+				if (patch != NULL) {
+					//std::cout << "refresh mesh not null" << std::endl;
+					//mesh->Render_SolidWireframe();
+					glGenBuffers(1, &VBO);
+					glBindBuffer(GL_ARRAY_BUFFER, VBO);
+					std::cout << verticesPatch[0] << std::endl;
+					std::cout << verticesPatch.size() << std::endl;
+					glBufferData(GL_ARRAY_BUFFER, verticesPatch.size() * sizeof(double), &verticesPatch[0], GL_STATIC_DRAW);
+
+					glGenBuffers(1, &meshVBO);
+					glBindBuffer(GL_ARRAY_BUFFER, meshVBO);
+					glBufferData(GL_ARRAY_BUFFER, patchUV.size() * sizeof(double), &patchUV[0], GL_STATIC_DRAW);
+
+					//glBufferData(GL_ARRAY_BUFFER, verticesPatch.size() * sizeof(double) + patchUV.size() * sizeof(double), &verticesPatch[0], GL_STATIC_DRAW);
+					//glBufferSubData(GL_ARRAY_BUFFER, verticesPatch.size() * sizeof(double), patchUV.size() * sizeof(double), &patchUV[0]);
+					printf("change the VBO to patch...\n");
+
+					//debug1，把VAO重訂的部分拉上來
+					glBindBuffer(GL_ARRAY_BUFFER, VBO);
+					glEnableVertexAttribArray(0);
+					glVertexAttribPointer(0,				//location
+						3,				//vec3
+						GL_DOUBLE,			//type
+						GL_FALSE,			//not normalized
+						0,				//strip
+					0);//buffer offset
+					glBindBuffer(GL_ARRAY_BUFFER, meshVBO);
+					glEnableVertexAttribArray(1);
+					/*glVertexAttribPointer(1,				//location
+						2,				//vec3
+						GL_DOUBLE,			//type
+						GL_FALSE,			//not normalized
+						0,				//strip
+						(void *)(verticesPatch.size() * sizeof(double)));//buffer offset*/
+					glVertexAttribPointer(1,				//location
+						2,				//vec3
+						GL_DOUBLE,			//type
+						GL_FALSE,			//not normalized
+						0,				//strip
+						(void *)(0));
+					//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+				}
+			
+				glEnable(GL_DEPTH_TEST);
+				glDepthFunc(GL_LEQUAL);
+				//glBindVertexArray(VAO);
+				glUseProgram(program);//uniform參數數值前必須先use shader
+				glBindBuffer(GL_UNIFORM_BUFFER, UBO);
+				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(mat4), &ViewMatrix);
+				glBufferSubData(GL_UNIFORM_BUFFER, sizeof(mat4), sizeof(mat4), &Proj);
+				glBindBuffer(GL_UNIFORM_BUFFER, 0);
+				glUniformMatrix4fv(ModelID, 1, GL_FALSE, &Model[0][0]);
+				glUniformMatrix4fv(xfID, 1, GL_FALSE, &MVP[0][0]);
 				glBindBuffer(GL_ARRAY_BUFFER, VBO);
-				std::cout << verticesPatch[0] << std::endl;
-				std::cout << verticesPatch.size() << std::endl;
+			
+				if (facesid2.size() != 0) {
+					printf("draw red patch...\n");
+					glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+					glm::vec3 color = glm::vec3(1.0, 0.0, 0.5);
+					glUniform3fv(ColorID, 1, &color[0]);
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, checkerBoardImg);
+					glDrawArrays(GL_TRIANGLES, 0, facePatch * 3);
+					//glDrawArrays(GL_TRIANGLES, 0, facePatch * 3);
+					//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+					//color = glm::vec3(0.0, 0.0, 0.0);
+					//glUniform3fv(ColorID, 1, &color[0]);
+					//glDrawArrays(GL_TRIANGLES, 0, face * 3);
+
+				}
+
+				if (selectedVertices.size() != 0) {
+					printf("tuck data into point shader...\n");
+					glGenBuffers(1, &VBO);
+					glBindBuffer(GL_ARRAY_BUFFER, VBO);
+					std::cout << verticesPatch[0] << std::endl;
+					std::cout << verticesPatch.size() << std::endl;
+					glBufferData(GL_ARRAY_BUFFER, selectedVertices.size() * sizeof(double), &selectedVertices[0], GL_STATIC_DRAW);
+					glEnableVertexAttribArray(0);
+					glVertexAttribPointer(0,				//location
+						3,				//vec3
+						GL_DOUBLE,			//type
+						GL_FALSE,			//not normalized
+						0,				//strip
+						0);//buffer offset
+				}
+
+				if (selectedVertices.size() != 0) {
+					glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+					glm::vec3 color = glm::vec3(1.0, 0.0, 1.0);
+					glUniform3fv(ColorID, 1, &color[0]);
+					glPointSize(10000.0);
+					glDrawArrays(GL_POINTS, 0, 1);
+				}
+			}
+			
+			else { // 整塊拿去解
+				if (patchUV.size() != 0) {
+					glGenBuffers(1, &VBO);
+					glBindBuffer(GL_ARRAY_BUFFER, VBO);
+					//std::cout << verticesPatch[0] << std::endl;
+					//std::cout << verticesPatch.size() << std::endl;
+					glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(double), &vertices[0], GL_STATIC_DRAW);
+
+					glGenBuffers(1, &meshVBO);
+					glBindBuffer(GL_ARRAY_BUFFER, meshVBO);
+					glBufferData(GL_ARRAY_BUFFER, patchUV.size() * sizeof(double), &patchUV[0], GL_STATIC_DRAW);
+					
+					//glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(double) + patchUV.size() * sizeof(double), &vertices[0], GL_STATIC_DRAW);
+					
+					
+					//glBufferSubData(GL_ARRAY_BUFFER, vertices.size() * sizeof(double), patchUV.size() * sizeof(double), &patchUV[0]);
+					printf("change the VBO to patch...\n");
+
+					//debug1，把VAO重訂的部分拉上來
+					glBindBuffer(GL_ARRAY_BUFFER, VBO);
+					glEnableVertexAttribArray(0);
+					glVertexAttribPointer(0,				//location
+						3,				//vec3
+						GL_DOUBLE,			//type
+						GL_FALSE,			//not normalized
+						0,				//strip
+						0);//buffer offset
+					/*glEnableVertexAttribArray(1);
+					glVertexAttribPointer(1,				//location
+						2,				//vec3
+						GL_DOUBLE,			//type
+						GL_FALSE,			//not normalized
+						0,				//strip
+						(void *)(vertices.size() * sizeof(double)));//buffer offset*/
+					glBindBuffer(GL_ARRAY_BUFFER, meshVBO); // this attribute comes from a different vertex buffer
+					glVertexAttribPointer(1, 2, GL_DOUBLE, GL_FALSE, 0, 0); // 從instanceVBO傳入的
+					glEnableVertexAttribArray(1);
+					glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+					//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 				
-				glBufferData(GL_ARRAY_BUFFER, verticesPatch.size() * sizeof(double) + patchUV.size() * sizeof(double), &verticesPatch[0], GL_STATIC_DRAW);
-				glBufferSubData(GL_ARRAY_BUFFER, verticesPatch.size() * sizeof(double), patchUV.size() * sizeof(double), &patchUV[0]);
-				printf("change the VBO to patch...\n");
 
-				//debug1，把VAO重訂的部分拉上來
-				glEnableVertexAttribArray(0);
-				glVertexAttribPointer(0,				//location
-					3,				//vec3
-					GL_DOUBLE,			//type
-					GL_FALSE,			//not normalized
-					0,				//strip
-				0);//buffer offset
-				glEnableVertexAttribArray(1);
-				glVertexAttribPointer(1,				//location
-					2,				//vec3
-					GL_DOUBLE,			//type
-					GL_FALSE,			//not normalized
-					0,				//strip
-					(void *)(verticesPatch.size() * sizeof(double)));//buffer offset
-
-				//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+					glEnable(GL_DEPTH_TEST);
+					glDepthFunc(GL_LEQUAL);
+					//glBindVertexArray(VAO);
+					glUseProgram(program);//uniform參數數值前必須先use shader
+					glBindBuffer(GL_UNIFORM_BUFFER, UBO);
+					glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(mat4), &ViewMatrix);
+					glBufferSubData(GL_UNIFORM_BUFFER, sizeof(mat4), sizeof(mat4), &Proj);
+					glBindBuffer(GL_UNIFORM_BUFFER, 0);
+					glUniformMatrix4fv(ModelID, 1, GL_FALSE, &Model[0][0]);
+					glUniformMatrix4fv(xfID, 1, GL_FALSE, &MVP[0][0]);
+					glBindBuffer(GL_ARRAY_BUFFER, VBO);
+					//glBindBuffer(GL_ARRAY_BUFFER, meshVBO);
+					
+					printf("draw whole patch...\n");
+					glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+					glm::vec3 color = glm::vec3(1.0, 0.0, 0.5);
+					glUniform3fv(ColorID, 1, &color[0]);
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, checkerBoardImg);
+					glDrawArrays(GL_TRIANGLES, 0, face * 3);
+					//glDrawArrays(GL_TRIANGLES, 0, facePatch * 3);
+					//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+					//color = glm::vec3(0.0, 0.0, 0.0);
+					//glUniform3fv(ColorID, 1, &color[0]);
+					//glDrawArrays(GL_TRIANGLES, 0, face * 3);
+				}
 			}
-			
-			glEnable(GL_DEPTH_TEST);
-			glDepthFunc(GL_LEQUAL);
-			//glBindVertexArray(VAO);
-			glUseProgram(program);//uniform參數數值前必須先use shader
-			glBindBuffer(GL_UNIFORM_BUFFER, UBO);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(mat4), &ViewMatrix);
-			glBufferSubData(GL_UNIFORM_BUFFER, sizeof(mat4), sizeof(mat4), &Proj);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glUniformMatrix4fv(ModelID, 1, GL_FALSE, &Model[0][0]);
-			glUniformMatrix4fv(xfID, 1, GL_FALSE, &MVP[0][0]);
-			glBindBuffer(GL_ARRAY_BUFFER, VBO);
-			
-			if (facesid2.size() != 0) {
-				printf("draw red patch...\n");
-				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-				glm::vec3 color = glm::vec3(1.0, 0.0, 0.5);
-				glUniform3fv(ColorID, 1, &color[0]);
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, checkerBoardImg);
-				glDrawArrays(GL_TRIANGLES, 0, facePatch * 3);
-				//glDrawArrays(GL_TRIANGLES, 0, facePatch * 3);
-				//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-				//color = glm::vec3(0.0, 0.0, 0.0);
-				//glUniform3fv(ColorID, 1, &color[0]);
-				//glDrawArrays(GL_TRIANGLES, 0, face * 3);
-
-			}
-
 		}
 
 				 //mouseClick
 		private: System::Void hkoglPanelControl1_MouseDown(System::Object^  sender, System::Windows::Forms::MouseEventArgs^  e){
-			if (e->Button == System::Windows::Forms::MouseButtons::Left || e->Button == System::Windows::Forms::MouseButtons::Middle){
+			if ((e->Button == System::Windows::Forms::MouseButtons::Left || e->Button == System::Windows::Forms::MouseButtons::Middle) && !wholeModel){
 				//leftClick Or wheelClick
 				point center;
 				Mouse_State = Mouse::NONE;
@@ -818,15 +959,33 @@ namespace OpenMesh_EX {
 				camera.mouse(e->X, e->Y, Mouse_State, xf * center, 1.0, xf);
 
 				point depth;
-				camera.read_depth(e->X, e->Y, depth);
-				std::cout << "point : " << depth << std::endl;
+				camera.read_depth(e->X, SCR_HEIGHT - e->Y, depth);
+				// modelview換成xf才不會取錯
+				camera.read_mouse(e->X, SCR_HEIGHT - e->Y, depth, xf);
+				std::cout << "mouse point : " << depth << std::endl;
+				std::vector<double> mousePosition;
+				mousePosition.push_back(depth[0]);
+				mousePosition.push_back(depth[1]);
+				mousePosition.push_back(depth[2]);
 
 				glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
 				glReadBuffer(GL_COLOR_ATTACHMENT0);
 				glReadPixels(e->X, SCR_HEIGHT - e->Y, 1, 1, GL_RGBA, GL_FLOAT, &pixel);
 				printf("pixel %f to face id %f\n", pixel.r, pixel.g);
 				printf("mouse x = %d mouse y = %d\n", e->X, SCR_HEIGHT - e->Y);
-			
+
+				
+				selectedVertices.clear();
+				mesh->findNearestPoint(*mesh, mousePosition, pixel.r - 1, selectedVertices);
+				/*if (pixel.r - 1 >= 0.0) {
+					selectedVertices.push_back(depth[0]);
+					selectedVertices.push_back(depth[1]);
+					selectedVertices.push_back(depth[2]);
+					printf("selected point is : %f %f %f\n", selectedVertices[0], selectedVertices[1], selectedVertices[2]);
+
+				}*/
+				
+
 				// debug ： facesptr
 				//將所選到的面id加入vector中並且排序
 				// debug : array 改用 vector，有幫我寫好的排序
@@ -904,8 +1063,8 @@ namespace OpenMesh_EX {
 					//patch->loadToBufferPatch(verticesPatch, facePatch, facesid, facesptr);
 					mesh->loadToBufferPatch(verticesPatch, facePatch, facesid2, *patch); // 將選中的面的點存入要放進VBO的vector，加上建立patch(new mesh)
 					patch->getUV(patchUV, *patch, rotateAngle);
-					std::cout << "facePatch" << facePatch << std::endl;
-					std::cout << "verticesPatch.size()" << verticesPatch.size() << std::endl;
+					//std::cout << "facePatch" << facePatch << std::endl;
+					//std::cout << "verticesPatch.size()" << verticesPatch.size() << std::endl;
 				}
 				
 				glReadBuffer(GL_NONE);
@@ -987,13 +1146,20 @@ namespace OpenMesh_EX {
 			//clear vertices and face to null
 			vertices.clear();
 			face = 0;
+			meshUV.clear();
+			//OpenMesh::IO::Options opt = OpenMesh::IO::Options::VertexTexCoord;
 			if (ReadFile(filename, mesh)) std::cout << filename << std::endl;
 			isLoad = true;
-			mesh->loadToBuffer(vertices,face);
-			for (int i = 0; i < vertices.size(); i+=3) {
+			
+			mesh->loadToBuffer(*mesh, vertices, face, meshUV);
+			/*for (int i = 0; i < vertices.size(); i+=3) {
 				meshUV.push_back(0.0f);
 				meshUV.push_back(0.0f);
-			}
+			}*/
+			std::cout << "loading meshUV..." << endl;
+			/*for (int i = 0; i < meshUV.size(); i+=2) {
+				std::cout << "meshUV " << i << " : " << meshUV[i] << ", " << meshUV[i+1] << endl;
+			}*/
 			std::cout << "meshUV.size() : " << meshUV.size() << "vertices.size()" << vertices.size() << endl;
 			std::cout << "face" << face << std::endl;
 			hkoglPanelControl1->Invalidate();
@@ -1020,10 +1186,10 @@ namespace OpenMesh_EX {
 			std::cout << "un-paint uv ， facesid2.size() = " << facesid2.size() << endl;
 			std::cout << "facePatch = " << facePatch << endl;
 			std::cout << "patchUV.size() = " << patchUV.size() << endl;
-			for (int i = 0; i < patchUV.size(); i+=2) {
+			/*for (int i = 0; i < patchUV.size(); i+=2) {
 				std::cout << "s = " << patchUV[i] << " " << "t = " << patchUV[i + 1] << endl;
-			}
-			if (facesid2.size() != 0) {
+			}*/
+			if (facesid2.size() != 0 || wholeModel) {
 				std::cout << "Drawing the uv texcoord..." << endl;
 				glGenBuffers(1, &VBOuv);
 				glBindBuffer(GL_ARRAY_BUFFER, VBOuv);
@@ -1119,7 +1285,29 @@ namespace OpenMesh_EX {
 			}
 			hkoglPanelControl1->Invalidate();
 		}
-private: System::Void tableLayoutPanel1_Paint(System::Object^  sender, System::Windows::Forms::PaintEventArgs^  e) {
+		private: System::Void tableLayoutPanel1_Paint(System::Object^  sender, System::Windows::Forms::PaintEventArgs^  e) {
+}
+		private: System::Void button1_Click(System::Object^  sender, System::EventArgs^  e) {
+	
+
+			//----------------------------------
+			//將該model的所有面直接解uv座標
+			//----------------------------------
+			if (isLoad) {
+		
+				patchUV.clear();
+		
+				mesh->getUV(patchUV, *mesh, rotateAngle);
+		
+				wholeModel = true;
+			}
+
+			hkoglPanelControl1->Invalidate();
+			hkoglPanelControl2->Invalidate();
+
+		}
+		private: System::Void changePictureToolStripMenuItem_Click(System::Object^  sender, System::EventArgs^  e) {
+
 }
 };
 }

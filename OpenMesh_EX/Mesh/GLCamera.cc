@@ -42,9 +42,11 @@ Manages OpenGL camera and trackball/arcball interaction
 bool GLCamera::read_depth(int x, int y, point &p) const
 {
 	GLdouble M[16], P[16]; GLint V[4];
+	
 	glGetDoublev(GL_MODELVIEW_MATRIX, M);
 	glGetDoublev(GL_PROJECTION_MATRIX, P);
 	glGetIntegerv(GL_VIEWPORT, V);
+
 
 	static const float dx[] =
 		{ 0, 1,-1,-1, 1, 3,-3, 0, 0, 6,-6,-6, 6, 25,-25,  0,  0 };
@@ -89,6 +91,59 @@ bool GLCamera::read_depth(int x, int y, point &p) const
 	return false;
 }
 
+bool GLCamera::read_mouse(int x, int y, point &p, xform xf) const {
+	GLdouble M[16], P[16]; GLint V[4];
+
+	glGetDoublev(GL_MODELVIEW_MATRIX, M);
+	glGetDoublev(GL_PROJECTION_MATRIX, P);
+	glGetIntegerv(GL_VIEWPORT, V);
+
+	for (int i = 0; i < 15; i++) {
+		M[i] = xf[i];
+	}
+
+	static const float dx[] =
+	{ 0, 1,-1,-1, 1, 3,-3, 0, 0, 6,-6,-6, 6, 25,-25,  0,  0 };
+	static const float dy[] =
+	{ 0, 1, 1,-1,-1, 0, 0, 3,-3, 6, 6,-6,-6,  0,  0, 25,-25 };
+	const float scale = 0.01f;
+	const int displacements = sizeof(dx) / sizeof(float);
+
+	int xmin = V[0], xmax = V[0] + V[2] - 1, ymin = V[1], ymax = V[1] + V[3] - 1;
+
+	for (int i = 0; i < displacements; i++) {
+		int xx = min(max(x + int(dx[i] * scale*V[2]), xmin), xmax);
+		int yy = min(max(y + int(dy[i] * scale*V[3]), ymin), ymax);
+		float d;
+		glReadPixels(xx, yy, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &d);
+
+		static float maxd = 0.0f;
+		if (!maxd) {
+			glScissor(xx, yy, 1, 1);
+			glEnable(GL_SCISSOR_TEST);
+			glClearDepth(1);
+			glClear(GL_DEPTH_BUFFER_BIT);
+			glReadPixels(xx, yy, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &maxd);
+			if (maxd) {
+				glClearDepth(d / maxd);
+				glClear(GL_DEPTH_BUFFER_BIT);
+			}
+			glDisable(GL_SCISSOR_TEST);
+			glClearDepth(1);
+			if (!maxd)
+				return false;
+		}
+
+		d /= maxd;
+		if (d > 0.0001f && d < 0.9999f) {
+			GLdouble X, Y, Z;
+			gluUnProject(xx, yy, d, M, P, V, &X, &Y, &Z);
+			p = point((float)X, (float)Y, (float)Z);
+			return true;
+		}
+	}
+	return false;
+}
 
 // Mouse helper - decide whether to start auto-spin
 void GLCamera::startspin()
